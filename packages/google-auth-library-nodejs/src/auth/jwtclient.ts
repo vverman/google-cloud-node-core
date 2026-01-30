@@ -148,6 +148,7 @@ export class JWT extends OAuth2Client implements IdTokenProvider {
               authorization: `Bearer ${tokens.id_token}`,
             }),
           ),
+          isIDToken: true,
         };
       } else {
         // no scopes have been set, but a uri has been provided. Use JWTAccess
