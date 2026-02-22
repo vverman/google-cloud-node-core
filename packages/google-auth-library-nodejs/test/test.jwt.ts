@@ -1266,9 +1266,9 @@ describe('jwt', () => {
       authHeader = MOCK_AUTH_HEADER,
     ): nock.Scope {
       const lookupUrl = SERVICE_ACCOUNT_LOOKUP_ENDPOINT.replace(
-        '{universe_domain}',
-        'googleapis.com',
-      ).replace('{service_account_email}', encodeURIComponent(email));
+        '{service_account_email}',
+        encodeURIComponent(email),
+      );
       return nock(new URL(lookupUrl).origin)
         .get(new URL(lookupUrl).pathname)
         .matchHeader('authorization', authHeader)
@@ -1338,9 +1338,6 @@ describe('jwt', () => {
       jwt.credentials = {refresh_token: 'jwt-placeholder'};
 
       const lookupUrl = SERVICE_ACCOUNT_LOOKUP_ENDPOINT.replace(
-        '{universe_domain}',
-        'googleapis.com',
-      ).replace(
         '{service_account_email}',
         encodeURIComponent(SERVICE_ACCOUNT_EMAIL),
       );

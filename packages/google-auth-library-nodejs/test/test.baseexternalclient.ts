@@ -2758,11 +2758,9 @@ describe('BaseExternalAccountClient', () => {
       ]);
 
       const lookupUrl = WORKLOAD_LOOKUP_ENDPOINT.replace(
-        '{universe_domain}',
-        'googleapis.com',
-      )
-        .replace('{project_id}', projectNumber)
-        .replace('{pool_id}', workloadPoolId);
+        '{project_id}',
+        projectNumber,
+      ).replace('{pool_id}', workloadPoolId);
 
       let rabLookupCalled = false;
       const rabScope = nock(new URL(lookupUrl).origin)
@@ -2822,11 +2820,9 @@ describe('BaseExternalAccountClient', () => {
       ]);
 
       const lookupUrl = WORKFORCE_LOOKUP_ENDPOINT.replace(
-        '{universe_domain}',
-        'googleapis.com',
-      )
-        .replace('{location}', location)
-        .replace('{pool_id}', workforcePoolId);
+        '{location}',
+        location,
+      ).replace('{pool_id}', workforcePoolId);
 
       let rabLookupCalled = false;
       const rabScope = nock(new URL(lookupUrl).origin)
@@ -2911,9 +2907,9 @@ describe('BaseExternalAccountClient', () => {
       });
 
       const lookupUrl = SERVICE_ACCOUNT_LOOKUP_ENDPOINT.replace(
-        '{universe_domain}',
-        'googleapis.com',
-      ).replace('{service_account_email}', encodeURIComponent(saEmail));
+        '{service_account_email}',
+        encodeURIComponent(saEmail),
+      );
 
       let rabLookupCalled = false;
       const rabScope = nock(new URL(lookupUrl).origin)
