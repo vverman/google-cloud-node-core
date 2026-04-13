@@ -1,4 +1,4 @@
-**_THIS REPOSITORY IS ARCHIVED. ALL OF ITS CONTENT AND HISTORY HAS BEEN MOVED TO [GOOGLE-CLOUD-NODE](https://github.com/googleapis/google-cloud-node/tree/main/core)_**
+**_THIS REPOSITORY IS ARCHIVED. ALL OF ITS CONTENT AND HISTORY HAS BEEN MOVED TO [GOOGLE-CLOUD-NODE](https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs)_**
 
 '# Google Cloud Node Core
 
