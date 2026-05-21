@@ -17,11 +17,17 @@ const {IdentityPoolClient} = require('google-auth-library');
 const {Gaxios} = require('gaxios');
 require('dotenv').config();
 
+/**
+ * Helper to sleep for a specified amount of time.
+ */
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 // Workload Identity Pool Configuration
 const gcpWorkloadAudience = process.env.GCP_WORKLOAD_AUDIENCE;
 const serviceAccountImpersonationUrl =
   process.env.GCP_SERVICE_ACCOUNT_IMPERSONATION_URL;
-const gcsBucketName = process.env.GCS_BUCKET_NAME;
+const gcsBucketName =
+  process.env.GCS_BUCKET_NAME || 'trust_boundary_test_bucket';
 
 // Okta Configuration
 const oktaDomain = process.env.OKTA_DOMAIN; // e.g., 'https://dev-12345.okta.com'
@@ -35,28 +41,23 @@ const SUBJECT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:jwt';
 /**
  * A custom SubjectTokenSupplier that authenticates with Okta using the
  * Client Credentials grant flow.
- *
- * This flow is designed for machine-to-machine (M2M) authentication and
- * exchanges the application'''s client_id and client_secret for an access token.
  */
 class OktaClientCredentialsSupplier {
   constructor(domain, clientId, clientSecret) {
-    this.oktaTokenUrl = `${domain}/oauth2/default/v1/token`;
+    this.oktaTokenUrl = domain.startsWith('http')
+      ? `${domain}/oauth2/default/v1/token`
+      : `https://${domain}/oauth2/default/v1/token`;
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.accessToken = null;
     this.expiryTime = 0;
     this.gaxios = new Gaxios();
-    console.log('OktaClientCredentialsSupplier initialized.');
+    console.log(
+      `OktaClientCredentialsSupplier initialized for domain: ${this.oktaTokenUrl}`,
+    );
   }
 
-  /**
-   * Main method called by the auth library. It will fetch a new token if one
-   * is not already cached.
-   * @returns {Promise<string>} A promise that resolves with the Okta Access token.
-   */
   async getSubjectToken() {
-    // Check if the current token is still valid (with a 60-second buffer).
     const isTokenValid =
       this.accessToken && Date.now() < this.expiryTime - 60 * 1000;
 
@@ -70,24 +71,15 @@ class OktaClientCredentialsSupplier {
     );
     const {accessToken, expiresIn} = await this.fetchOktaAccessToken();
     this.accessToken = accessToken;
-    // Calculate the absolute expiry time in milliseconds.
     this.expiryTime = Date.now() + expiresIn * 1000;
     return this.accessToken;
   }
 
-  /**
-   * Performs the Client Credentials grant flow by making a POST request to Okta'''s token endpoint.
-   * @returns {Promise<{accessToken: string, expiresIn: number}>} A promise that resolves with the Access Token and expiry from Okta.
-   */
   async fetchOktaAccessToken() {
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
-
-    // For Client Credentials, scopes are optional and define the permissions
-    // the token will have. If you have custom scopes, add them here.
     params.append('scope', 'access-gcp');
 
-    // The client_id and client_secret are sent in a Basic Auth header.
     const authHeader =
       'Basic ' +
       Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
@@ -128,18 +120,20 @@ class OktaClientCredentialsSupplier {
 }
 
 /**
- * Main function to demonstrate the custom supplier.
+ * Main function to demonstrate the custom supplier with RAB logic.
  */
 async function main() {
+  // Enable the Trust Boundary experiment
+  process.env.GOOGLE_AUTH_TRUST_BOUNDARY_ENABLE_EXPERIMENT = 'true';
+
   if (
     !gcpWorkloadAudience ||
-    !gcsBucketName ||
     !oktaDomain ||
     !oktaClientId ||
     !oktaClientSecret
   ) {
     throw new Error(
-      'Missing required environment variables. Please check your .env file.',
+      'Missing required environment variables (GCP_WORKLOAD_AUDIENCE, OKTA_DOMAIN, OKTA_CLIENT_ID, OKTA_CLIENT_SECRET).',
     );
   }
 
@@ -150,8 +144,7 @@ async function main() {
     oktaClientSecret,
   );
 
-  // 2. Instantiate an IdentityPoolClient directly with the required configuration.
-  // This client is specialized for workload identity federation flows.
+  // 2. Instantiate an IdentityPoolClient directly.
   const client = new IdentityPoolClient({
     audience: gcpWorkloadAudience,
     subject_token_type: SUBJECT_TOKEN_TYPE,
@@ -160,22 +153,62 @@ async function main() {
     service_account_impersonation_url: serviceAccountImpersonationUrl,
   });
 
-  // 3. Construct the URL for the Cloud Storage JSON API to get bucket metadata.
-  const bucketUrl = `https://storage.googleapis.com/storage/v1/b/${gcsBucketName}`;
-  console.log(`[Test] Getting metadata for bucket: ${gcsBucketName}...`);
-  console.log(`[Test] Request URL: ${bucketUrl}`);
+  console.log(`Client Type: ${client.constructor.name}`);
+  console.log(`Universe Domain: ${client.universeDomain}`);
 
-  // 4. Use the client to make an authenticated request.
-  const res = await client.request({url: bucketUrl});
+  if (typeof client.getRegionalAccessBoundaryUrl === 'function') {
+    try {
+      console.log(`RAB URL: ${await client.getRegionalAccessBoundaryUrl()}`);
+    } catch (e) {
+      console.log(`RAB URL Error: ${e.message}`);
+    }
+  }
 
-  console.log('--- SUCCESS! ---');
-  console.log('Successfully authenticated and retrieved bucket data:');
-  console.log(JSON.stringify(res.data, null, 2));
+  // 3. Construct the URL for the request (e.g. Cloud Storage).
+  const url = `https://storage.googleapis.com/storage/v1/b/${gcsBucketName}`;
+
+  try {
+    console.log('--- First Call to getRequestHeaders ---');
+    let headers = await client.getRequestHeaders(url);
+    console.log('Headers (First attempt):');
+    console.log(
+      `x-allowed-locations: ${headers.get('x-allowed-locations') || 'NOT PRESENT (Expected for cold start)'}`,
+    );
+
+    console.log(
+      'Sleeping for 5 seconds to let background RAB lookup finish...',
+    );
+    await sleep(5000);
+
+    console.log('--- Second Call to getRequestHeaders ---');
+    headers = await client.getRequestHeaders(url);
+    console.log('Headers (Second attempt):');
+    const xAllowedLocations = headers.get('x-allowed-locations');
+    console.log(
+      `x-allowed-locations: ${xAllowedLocations || 'STILL NOT PRESENT (Lookup might have failed)'}`,
+    );
+
+    if (xAllowedLocations) {
+      console.log('Success! RAB header is present.');
+    } else {
+      console.log('Failure! RAB header should be present.');
+    }
+
+    const headersObject = {};
+    headers.forEach((value, key) => {
+      headersObject[key] = value;
+    });
+    console.log('Full Headers Object:');
+    console.log(JSON.stringify(headersObject, null, 2));
+  } catch (e) {
+    console.error('Error fetching request headers:');
+    console.error(e);
+  }
 }
 
 main().catch(error => {
   console.error('--- FAILED ---');
-  const fullError = error.response?.data || error;
+  const fullError = error.response?.data || error.message || error;
   console.error(JSON.stringify(fullError, null, 2));
   process.exitCode = 1;
 });

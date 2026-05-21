@@ -1,0 +1,14 @@
+{
+  "type": "external_account",
+  "audience": "//iam.googleapis.com/projects/654269145772/locations/global/workloadIdentityPools/byoid-pool/providers/azure-pid",
+  "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+  "token_url": "https://sts.googleapis.com/v1/token",
+  "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/byoid-test@cicpclientproj.iam.gserviceaccount.com:generateAccessToken",
+  "credential_source": {
+    "executable": {
+      "command": "/Users/pjiyer/Documents/google_auth_library/NodeJS/pjiyer-cloud-node-core/google-cloud-node-core/packages/google-auth-library-nodejs/samples/scripts/fetch-azure-token.sh",
+      "timeout_millis": 10000,
+      "output_file": "/tmp/azure_token_cache.json"
+    }
+  }
+}
